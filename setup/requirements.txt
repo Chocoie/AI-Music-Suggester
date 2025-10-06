@@ -1,0 +1,28 @@
+# Core MLOps and Data Science
+metaflow>=2.7.0
+pandas>=1.5.0
+numpy>=1.21.0
+scikit-learn>=1.1.0
+
+# LLMOps and Generative AI
+langchain>=0.1.0
+langgraph>=0.0.40
+langchain-community
+langchain-openai
+langchain-anthropic
+langchain_ollama
+
+# Optional: MLflow for experiment tracking
+mlflow>=2.0.0
+
+# Deployment and Monitoring
+gradio>=3.40.0
+
+# Spotify API
+spotipy
+
+# Last.fm API
+pylast
+
+# General Utilities and Project Environment
+python-dotenv
