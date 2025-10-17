@@ -37,7 +37,7 @@ for lib in REQUIRED_LIBRARIES:
         all_libs_ok = False
 
 if not all_libs_ok:
-    print("\n🚨 Please run 'pip install -r requirements.txt' to fix missing libraries.")
+    print("\n🚨 Please run 'pip install -r setup/requirements.txt' to fix missing libraries.")
     sys.exit(1)
 
 
