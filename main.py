@@ -250,7 +250,7 @@ class MusicAssistant:
         if len(messages)>1:
             prevMessage = messages[-2]
 
-            is_pure_ai_response = (
+            isAIResponse = (
                 prevMessage.type == "ai" and 
                 (not hasattr(prevMessage, 'tool_calls') or 
                 prevMessage.tool_calls == [] or
@@ -258,7 +258,7 @@ class MusicAssistant:
             )
             
             # If the preceding message was a pure AI conversational response, validate this turn.
-            if is_pure_ai_response:
+            if isAIResponse:
                 return "VALID"    
 
         # check for music keywords (for intial or non-follow-ups)
@@ -292,7 +292,7 @@ class MusicAssistant:
         response = self.model.invoke(state["messages"]) 
 
         if response.tool_calls:
-            print("\n--- LLM Requested Tool Use ---")
+            #print("\n--- LLM Requested Tool Use ---")
             
             tool_outputs = []
             
@@ -302,7 +302,7 @@ class MusicAssistant:
                 tool_args = tool_call.get('args', {})
                 tool_call_id = tool_call.get('id')
                 
-                print(f"Executing Tool: {tool_name} with args: {tool_args}")
+                #print(f"Executing Tool: {tool_name} with args: {tool_args}")
                 
                 # Check the robust map for the Tool object
                 tool_to_execute = tools_by_name.get(tool_name)
@@ -345,7 +345,6 @@ class MusicAssistant:
             finalOutput = ""
             for out in tool_outputs:
                 finalOutput += out.content + "\n"
-            print(f"{finalOutput}")
 
             # Return the updated state
             return {'messages': [response] + tool_outputs}
