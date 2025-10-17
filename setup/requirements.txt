@@ -34,3 +34,4 @@ pylast
 
 # General Utilities and Project Environment
 python-dotenv
+grpcio==1.67.1

@@ -1,5 +1,8 @@
 # imports
 import os
+# suppress logging warnings
+os.environ['GLOG_minloglevel'] = '2'
+os.environ['GRPC_VERBOSITY'] = 'ERROR'
 import sys
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
@@ -9,7 +12,6 @@ from langchain_core.tools import tool, StructuredTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
-import logging
 import spotipy
 from google.cloud import secretmanager
 from spotipy.oauth2 import SpotifyClientCredentials
@@ -61,8 +63,8 @@ def spotify_search(query: str, search_type: str = 'artist,track') -> str:
     Input should be a comma-separated list of search types (e.g., 'artist,track') and a query.
     """
     try:
-        CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID")
-        CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET")
+        CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+        CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
         
         if not CLIENT_ID or not CLIENT_SECRET:
             return "Authentication Error: Spotify credentials not loaded from Secret Manager."
@@ -72,7 +74,23 @@ def spotify_search(query: str, search_type: str = 'artist,track') -> str:
             client_id=CLIENT_ID,
             client_secret=CLIENT_SECRET
         ))
+
+        original_query = query
+        search_query = query
         
+        # Check if the query asks for a genre without using the official filter syntax.
+        query_lower = query.lower()
+        if 'genre:' not in query_lower and ('songs' in query_lower or 'music' in query_lower):
+            # search for tracks tagged with input genre
+            keywords = query_lower.replace(' songs', '').replace(' music', '').strip()
+            
+            # Format the query with the genre filter
+            search_query = f'genre:"{keywords}"' 
+            search_type = 'track'   
+        elif query.count(':') > 0 or 'genre:' in query_lower:
+            # The user provided an advanced filter already (e.g., 'genre:metal AND year:2000')
+            search_query = query 
+
         # Perform the search
         results = sp.search(q=query, type=search_type, limit=5)
         
@@ -81,8 +99,8 @@ def spotify_search(query: str, search_type: str = 'artist,track') -> str:
         # Extract and format results
         if 'tracks' in results and results['tracks']['items']:
             for i, track in enumerate(results['tracks']['items']):
-                artist_name = track['artists'][0]['name']
-                output.append(f"Track {i+1}: '{track['name']}' by {artist_name}")
+                trackName = track['artists'][0]['name']
+                output.append(f"Track {i+1}: '{track['name']}' by {trackName}")
 
         if 'artists' in results and results['artists']['items']:
             for i, artist in enumerate(results['artists']['items']):
@@ -96,9 +114,8 @@ def spotify_search(query: str, search_type: str = 'artist,track') -> str:
 
     except Exception as e:
         return f"An error occurred during Spotify API call: {e}"
-    
-print(f"Type of spotify_search: {type(spotify_search)}")
 
+# turn spotify_search into a Tool
 spotifySearchToolInstance = StructuredTool.from_function(
     func=spotify_search,
     name="spotify_search",
@@ -149,19 +166,48 @@ class MusicAssistant:
 
         # add nodes
         self.workflow.add_node("_userIn", self.userIn)
+        self.workflow.add_node("_topicRouterStep", self.topicRouterStep)
+        self.workflow.add_node("_checkQuery", self.checkQuery)
+        self.workflow.add_node("_ifContinue", self.ifContinue)
+        self.workflow.add_node("_rejectTurn", self.rejectTurn)
         self.workflow.add_node("_parseQuery", self.parseQuery)
+        self.workflow.add_node("_aiOutput", self.aiOutput)
+        self.workflow.add_node("_routeToolOrResponse", self.routeToolOrResponse)
 
         # define workflow
         self.workflow.set_entry_point("_userIn")
+
+        # checks if user quit convo
         self.workflow.add_conditional_edges(
-            "_userIn", 
+            "_userIn",
             self.ifContinue,
             {
                 "END": END,
-                "_parseQuery": "_parseQuery"
+                "CONTINUE": "_topicRouterStep"
             }
         )
-        self.workflow.add_edge("_parseQuery", "_userIn")
+
+        # topic validation
+        self.workflow.add_conditional_edges(
+            "_topicRouterStep", 
+            self.checkQuery,
+            {
+                "VALID": "_parseQuery",
+                "INVALID": "_rejectTurn"
+            }
+        )
+
+        # continue convo after tool call
+        self.workflow.add_conditional_edges(
+            "_parseQuery",
+            self.routeToolOrResponse,
+            {
+                "REINVOKE": "_parseQuery",
+                "FINAL_RESPONSE": "_aiOutput"
+            }
+        )
+        self.workflow.add_edge("_aiOutput", "_userIn")
+        self.workflow.add_edge("_rejectTurn", "_userIn")
 
         # compile
         self.app = self.workflow.compile()
@@ -183,6 +229,63 @@ class MusicAssistant:
             'userQuery': query,
             'messages': [HumanMessage(content=query)]
                 }
+
+    # make sure query is music related
+    def checkQuery(self, state) ->str:
+        musicKeywords = [
+            'song', 'track', 'artist', 'band', 'album', 'genre', 'tune', 'playlist', 'spotify', 'tempo',
+            'instrument', 'lyrics', 'beat', 'upbeat', 'downbeat', 'mood'
+            ]
+        
+        messages = state.get("messages", [])
+
+        # ensures messages is not empty
+        if not messages:
+            return "INVALID"
+
+        query = messages[-1].content
+        queryLowCase = query.lower()    
+
+        # context check
+        if len(messages)>1:
+            prevMessage = messages[-2]
+
+            is_pure_ai_response = (
+                prevMessage.type == "ai" and 
+                (not hasattr(prevMessage, 'tool_calls') or 
+                prevMessage.tool_calls == [] or
+                prevMessage.tool_calls is None)
+            )
+            
+            # If the preceding message was a pure AI conversational response, validate this turn.
+            if is_pure_ai_response:
+                return "VALID"    
+
+        # check for music keywords (for intial or non-follow-ups)
+        isMusicTopic = any(word in queryLowCase for word in musicKeywords)
+        
+        if isMusicTopic:
+            return "VALID"
+        else:
+            return "INVALID"
+
+    # tells user query is invalid
+    def rejectTurn(self, state):
+        rejection_msg = "I can only help with music-suggestion-related questions. Please re-enter a new query relating to music."
+        
+        # Get the current message list
+        messages = state.get("messages", [])
+            
+        # Append the rejection message as an AIMessage
+        messages.append(AIMessage(content=rejection_msg))
+        
+        # Print the rejection message so the user sees it
+        print(f"\n{rejection_msg}")
+        
+        return {
+            "messages": messages,
+            "complete": False 
+        }
 
     # get LLM response
     def parseQuery(self, state):
@@ -208,7 +311,7 @@ class MusicAssistant:
                     try:
                         output = tool_to_execute.invoke(tool_args)
                         
-                        # 3. Format the result as a ToolMessage (the 'Observation')
+                        # Format the result as a ToolMessage (the 'Observation')
                         tool_outputs.append(
                             ToolMessage(
                                 content=output, 
@@ -247,23 +350,46 @@ class MusicAssistant:
             # Return the updated state
             return {'messages': [response] + tool_outputs}
         
-        # if no tool call
-        r = response.content
-        print(f"\n{r}")
+        print("")
         
-        return {'messages': [AIMessage(content=r)]}
+        return {'messages': [AIMessage(content=response.content)]}
     
     # determines if convo should continue based on 'complete' state
     def ifContinue(self, state):
         if state.get("complete") == True:
             return "END"
         else:
-            return "_parseQuery"
+            return "CONTINUE"
+        
+    # prints AI response
+    def aiOutput(self, state):
+        messages = state.get("messages", [])
+        if messages:
+            last_message = messages[-1]
+            
+            # Check if the last message is an AIMessage
+            if last_message.type == "ai": 
+                # Print the final response to the console
+                print(f"{last_message.content}")
+                
+        return state
+    
+    # used to route conditional edges
+    def topicRouterStep(self, state):
+        return state
+    
+    # re-invoke LLM if tool was last message
+    def routeToolOrResponse(self, state):
+        messages = state.get("messages", [])
+        if messages and messages[-1].type == "tool":
+            return "REINVOKE"
+        else:
+            return "FINAL_RESPONSE"
 
 
 if __name__ == "__main__":
     assistant = MusicAssistant()
-    print("Hi, I am your Music Suggestor Assistant! \nPlease enter your request (or press 'q' to quit): ")
+    print("Hi, I am your Music Suggester Assistant! \nPlease enter your request (or press 'q' to quit): ")
     
     # The dictionary passed to invoke must contain ALL fields defined in the state
     current_state = assistant.initial_state 
