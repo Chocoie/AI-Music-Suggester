@@ -31,6 +31,7 @@ SYSTEM_PROMPT = (
     "user's query and immediately call the 'spotify_search' tool with the extracted "
     "keywords and search type (artist, track, album, tempo, mood, genre, popularity, duration). "
     "If the user asks a question, your response MUST be a tool call to 'spotify_search'."
+    "Speak in natural language. Do not use JSON, code blocks, or keys/values."
 )
 
 # genAI model declaration
@@ -369,7 +370,15 @@ class MusicAssistant:
             # Check if the last message is an AIMessage
             if last_message.type == "ai": 
                 # Print the final response to the console
-                print(f"{last_message.content}")
+                if type(last_message.content) == str:
+                    print(f"{last_message.content}")
+                elif type(last_message.content) == list:
+                    output = last_message.content[0]['text']
+                    print(f"{output}")
+                elif type(last_message.content) == dict:
+                    output = last_message.content[0]['text']
+                    print(f"{output}")
+                
                 
         return state
     
