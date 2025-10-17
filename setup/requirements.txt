@@ -1,37 +1,7 @@
-# Core MLOps and Data Science
-metaflow>=2.7.0
-pandas>=1.5.0
-numpy>=1.21.0
-scikit-learn>=1.1.0
-
-# LLMOps and Generative AI
-google-genai
-langchain>=0.1.0
-langgraph>=0.0.40
-langchain-community
-langchain-anthropic
+langchain-core
 langchain-google-genai
-
-# Google Cloud Core Authentication/Services
-google-auth>=2.1.0
-google-api-python-client>=2.7.0
-google-cloud-storage>=2.0.0
-
-# Google Cloud ML Platform (Vertex AI) Integration
-langchain-google-vertexai>=1.0.0
-
-# MLflow for experiment tracking
-mlflow>=2.0.0
-
-# Deployment and Monitoring
-gradio>=3.40.0
-
-# Spotify API
-spotipy
-
-# Last.fm API
-pylast
-
-# General Utilities and Project Environment
+langgraph
 python-dotenv
+spotipy
+google-cloud-secret-manager
 grpcio==1.67.1
