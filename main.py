@@ -404,19 +404,19 @@ if __name__ == "__main__":
             
             # Check for the exit condition set in userIn (if implemented in the calling loop)
             if current_state.get('complete'):
-                # print history log of conversation
-                messages: List[BaseMessage] = current_state.get('messages', [])
+                # # print history log of conversation
+                # messages: List[BaseMessage] = current_state.get('messages', [])
             
-                print("\n" + "="*50)
-                print("CONVERSATION HISTORY LOG")
-                print("="*50)
+                # print("\n" + "="*50)
+                # print("CONVERSATION HISTORY LOG")
+                # print("="*50)
                 
-                # Loop through the accumulated messages
-                for msg in messages:
-                    print(f"[{msg.type.upper(): <6}]: {msg.content.strip()}")
+                # # Loop through the accumulated messages
+                # for msg in messages:
+                #     print(f"[{msg.type.upper(): <6}]: {msg.content.strip()}")
                 
-                print("="*50 + "\n")
-
+                # print("="*50 + "\n")
+                print("-"*50)
                 print("Assistant shutting down.")
                 break
                  
