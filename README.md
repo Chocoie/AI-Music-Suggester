@@ -51,7 +51,7 @@ This project is a LangGraph-based conversational assistant that uses the Gemini 
 ## 4. Verify Setup
 Execute the verification script to confirm all dependencies and environment variables are loaded correctly:
 ```bash
-python3 setup/verify_setup.py
+python3 setup/verify_install.py
 ```
 You must see a "✨ SUCCESS!" message before proceeding. If you see any "❌" messages, follow the troubleshooting steps provided by the script.
 
