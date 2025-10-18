@@ -49,7 +49,7 @@ if not load_dotenv(override=True):
 
 # List of essential environment variables
 REQUIRED_ENV_VARS = [
-    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
     "SPOTIFY_CLIENT_ID",
     "SPOTIFY_CLIENT_SECRET"
 ]
