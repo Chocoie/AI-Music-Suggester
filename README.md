@@ -55,6 +55,12 @@ python3 setup/verify_install.py
 ```
 You must see a "✨ SUCCESS!" message before proceeding. If you see any "❌" messages, follow the troubleshooting steps provided by the script.
 
+To check grcpio:
+```bash
+pip show grcpio
+```
+You should see grcpio 1.67.1
+
 ## 5. How to Run
 
 Execute the main script:
