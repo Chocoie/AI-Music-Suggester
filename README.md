@@ -41,7 +41,7 @@ This project is a LangGraph-based conversational assistant that uses the Gemini 
 
     **.env (Example)**
     ```
-    GEMINI_API_KEY="AIzaSy...your-key-here"
+    GOOGLE_API_KEY="AIzaSy...your-key-here"
     SPOTIFY_CLIENT_ID="...your-spotify-id..."
     SPOTIFY_CLIENT_SECRET="...your-spotify-secret..."
     GRPC_VERBOSITY="ERROR"
@@ -61,9 +61,9 @@ You must see a "✨ SUCCESS!" message before proceeding. If you see any "❌" me
 
 To check grcpio:
 ```bash
-pip show grcpio
+pip show grpcio
 ```
-You should see grcpio 1.67.1
+You should see "Version: 1.67.1"
 
 ## 5. How to Run
 
