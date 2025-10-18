@@ -18,8 +18,7 @@ REQUIRED_LIBRARIES = [
     'langchain_google_genai',
     'spotipy',
     'google.cloud.secretmanager',
-    'dotenv',
-    'grpcio' 
+    'dotenv'
 ]
 
 print("--- 🔬 Checking Required Libraries ---")
