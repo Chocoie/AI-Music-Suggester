@@ -59,7 +59,7 @@ Execute the verification script to confirm all dependencies and environment vari
 ```
 You must see a "✨ SUCCESS!" message before proceeding. If you see any "❌" messages, follow the troubleshooting steps provided by the script.
 
-To check grcpio:
+To check grpcio:
 ```bash
 pip show grpcio
 ```
