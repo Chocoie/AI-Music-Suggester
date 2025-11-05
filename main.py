@@ -15,7 +15,7 @@ from langgraph.graph.message import add_messages
 import spotipy
 from google.cloud import secretmanager
 from spotipy.oauth2 import SpotifyClientCredentials
-from typing import TypedDict, Annotated, List, Dict, Any, Sequence
+from typing import Optional, TypedDict, Annotated, List, Dict, Any, Sequence
 import operator
 
 # loading key
@@ -92,6 +92,14 @@ def spotify_search(query: str, search_type: str = 'artist,track') -> str:
             # The user provided an advanced filter already (e.g., 'genre:metal AND year:2000')
             search_query = query 
 
+        # check if query gives a 'mood' without using proper search syntax
+        if 'mood' not in query_lower and ('songs' in query_lower or 'music' in query_lower):
+            keywords = query_lower.replace(' songs', '').replace(' music', '').strip()
+            search_query = f'mood:"{keywords}"'
+            search_type = 'track'
+        elif query.count(':') > 0 or 'mood:' in query_lower:
+            search_query = query 
+
         # Perform the search
         results = sp.search(q=query, type=search_type, limit=5)
         
@@ -127,15 +135,26 @@ spotifySearchToolInstance = StructuredTool.from_function(
 tools = [spotifySearchToolInstance]
 tools_by_name = {tool.name: tool for tool in tools} 
 
-class MusicAssistant:
+class MusicState(TypedDict):
+            # input 
+            userQuery: str
 
+            # features
+            search_keywords: Annotated[List[str], operator.add]
+            currNode: str
+
+            # messages and history
+            messages: Annotated[List[BaseMessage], add_messages]
+            convoLog: List[Dict]
+            complete: bool
+            streamlitPrompt: Optional[str]
+
+class MusicAssistant:
     def __init__(self):
         self.initial_state = {
+            "userQuery": "",
             "messages": [], 
-            "currTime": "N/A", 
-            "userPrefs": {}, 
-            "search_keywords": [],
-            "initialCands": {},
+            "convoLog": [],
             "currNode": "",
             "complete": False
         }
@@ -147,22 +166,6 @@ class MusicAssistant:
         self.setupWorkflow()
 
     def setupWorkflow(self):
-        class MusicState(TypedDict):
-            # input 
-            userQuery: str
-            currTime: str
-
-            # features
-            userPrefs: Dict
-            historyLog: List[str]
-            search_keywords: Annotated[List[str], operator.add]
-            initialCands: List[Dict]
-            currNode: str
-
-            # messages and history
-            messages: Annotated[List[BaseMessage], add_messages]
-            complete: bool
-
         self.workflow = StateGraph(MusicState)
 
         # add nodes
@@ -173,6 +176,7 @@ class MusicAssistant:
         self.workflow.add_node("_rejectTurn", self.rejectTurn)
         self.workflow.add_node("_parseQuery", self.parseQuery)
         self.workflow.add_node("_aiOutput", self.aiOutput)
+        self.workflow.add_node("_shouldContinueAfterOutput", self.shouldContinueAfterOutput)
         self.workflow.add_node("_routeToolOrResponse", self.routeToolOrResponse)
 
         # define workflow
@@ -207,38 +211,87 @@ class MusicAssistant:
                 "FINAL_RESPONSE": "_aiOutput"
             }
         )
-        self.workflow.add_edge("_aiOutput", "_userIn")
+        
+        # continue after output
+        self.workflow.add_conditional_edges(
+            "_aiOutput",
+            self.shouldContinueAfterOutput,
+            {
+                "END": END,
+                "CONTINUE": "_userIn"
+            }
+        )
+
         self.workflow.add_edge("_rejectTurn", "_userIn")
 
         # compile
         self.app = self.workflow.compile()
 
+    def draw_mermaid(self):
+        """Generate Mermaid diagram of the workflow"""
+        try:
+            graph = self.app.get_graph() 
+            mermaid_output = graph.draw_mermaid()
+            print("\nWorkflow Diagram (Mermaid format):")
+            print("="*50)
+            print(mermaid_output)
+            print("="*50)
+            print("Copy the above to https://mermaid.live/ to visualize")
+            return mermaid_output
+        except Exception as e:
+            print(f"Error generating diagram: {e}")
+            return None
+
     # take in user query
     def userIn(self, state):
-        print("-"*50)
-        query = input()
+        currConvoLog = state.get('convoLog', [])
+        logUpdate = []
+        isDuplicate = False
+        streamlitPrompt = state.get("streamlitPrompt")
+        
+        if streamlitPrompt is not None:
+            query = streamlitPrompt
+        else:
+            print("-"*50)
+            query = input()
+
+        logEntry = {"speaker": "HUMAN", "content": query.strip()}
+
+        #check to make sure no duplicate lines in the convoLog
+        if (len(currConvoLog) == 0) or (currConvoLog[-1].get('content') != logEntry['content']):
+            isDuplicate = False
+        else:
+            isDuplicate = True
+
+        if not isDuplicate:
+            currConvoLog.append(logEntry)
 
         # used to quit convo
         if query.lower() in ['q', 'quit']:
             return {
                 "complete": True, 
                 "userQuery": query,
-                'messages': [HumanMessage(content=query)]
+                'messages': [HumanMessage(content=query)],
+                'convoLog': currConvoLog
                 }
+        
         
         return {
             'userQuery': query,
-            'messages': [HumanMessage(content=query)]
+            'messages': [HumanMessage(content=query)],
+            'convoLog': currConvoLog
                 }
 
     # make sure query is music related
-    def checkQuery(self, state) ->str:
+    def checkQuery(self, state):
         musicKeywords = [
             'song', 'track', 'artist', 'band', 'album', 'genre', 'tune', 'playlist', 'spotify', 'tempo',
-            'instrument', 'lyrics', 'beat', 'upbeat', 'downbeat', 'mood'
+            'instrument', 'instrumental', 'lyrics', 'beat', 'upbeat', 'downbeat', 'mood', 'jazz', 'rock', 'pop', 'chill',
+            'indie', 'folk', 'happy', 'sad', 'angry', 'mad', 'frustrated', 'calm', 'sing', 'sings'
             ]
         
         messages = state.get("messages", [])
+        convo = state.get("convoLog", [])
 
         # ensures messages is not empty
         if not messages:
@@ -276,25 +329,37 @@ class MusicAssistant:
         
         # Get the current message list
         messages = state.get("messages", [])
+        convo = state.get("convoLog", [])
+        logUpdate = []
             
         # Append the rejection message as an AIMessage
         messages.append(AIMessage(content=rejection_msg))
+
+        logEntry = [{"speaker": "HUMAN", "content": rejection_msg}]
+
+        #check to make sure no duplicate lines in the convoLog
+        if (len(convo) == 0) or (convo[-1].get('content') != logEntry[0]['content']):
+            logUpdate = [logEntry]
+        else:
+            logUpdate = []
         
         # Print the rejection message so the user sees it
-        print(f"\n{rejection_msg}")
+        if state.get("streamlitPrompt") is None:
+            print(f"\n{rejection_msg}")
         
         return {
             "messages": messages,
+            "convoLog": logUpdate,
             "complete": False 
         }
 
     # get LLM response
     def parseQuery(self, state):
-        response = self.model.invoke(state["messages"]) 
+        messages = state.get("messages", [])
 
-        if response.tool_calls:
-            #print("\n--- LLM Requested Tool Use ---")
-            
+        response = self.model.invoke(messages) 
+
+        if response.tool_calls:            
             tool_outputs = []
             
             # Loop through all tool calls requested by the model
@@ -302,8 +367,6 @@ class MusicAssistant:
                 tool_name = tool_call.get('name')
                 tool_args = tool_call.get('args', {})
                 tool_call_id = tool_call.get('id')
-                
-                #print(f"Executing Tool: {tool_name} with args: {tool_args}")
                 
                 # Check the robust map for the Tool object
                 tool_to_execute = tools_by_name.get(tool_name)
@@ -364,23 +427,30 @@ class MusicAssistant:
     # prints AI response
     def aiOutput(self, state):
         messages = state.get("messages", [])
+        currConvoLog = state.get("convoLog", [])
+        output = ""
+
         if messages:
             last_message = messages[-1]
             
             # Check if the last message is an AIMessage
             if last_message.type == "ai": 
                 # Print the final response to the console
-                if type(last_message.content) == str:
-                    print(f"{last_message.content}")
-                elif type(last_message.content) == list:
-                    output = last_message.content[0]['text']
-                    print(f"{output}")
-                elif type(last_message.content) == dict:
-                    output = last_message.content[0]['text']
-                    print(f"{output}")
+                if isinstance(last_message.content, str):
+                    output = last_message.content
+                elif isinstance(last_message.content, list):
+                    output = last_message.content[0].get('text', '')
+                elif isinstance(last_message.content, dict):
+                    output = last_message.content.get('text', '')
+
+                if state.get("streamlitPrompt") is None and output:
+                    finalOutput = output.strip()
+                    print(f"{finalOutput}")
+                    # add output to conversational log
+                    newEntry = {"speaker": "AI", "content": finalOutput}
+                    currConvoLog.append(newEntry)
                 
-                
-        return state
+        return {"convoLog": currConvoLog}
     
     # used to route conditional edges
     def topicRouterStep(self, state):
@@ -393,10 +463,26 @@ class MusicAssistant:
             return "REINVOKE"
         else:
             return "FINAL_RESPONSE"
-
+        
+    # should continue for streamlit
+    def shouldContinueAfterOutput(self, state):
+        if state.get("streamlitPrompt") is not None:
+            return "END"
+        else:
+            return "CONTINUE"
 
 if __name__ == "__main__":
     assistant = MusicAssistant()
+
+    # Check for --graph parameter
+    if "--graph" in sys.argv:
+        print("🎵 AI Music Suggester - Workflow Graph")
+        print("=" * 50)
+        assistant.draw_mermaid()
+        print("=" * 50)
+        print("Graph displayed. Exiting...")
+        sys.exit(0)
+
     print("Hi, I am your Music Suggester Assistant! \nPlease enter your request (or press 'q' to quit): ")
     
     # The dictionary passed to invoke must contain ALL fields defined in the state
@@ -406,26 +492,18 @@ if __name__ == "__main__":
         try:
             # Invoke the graph, passing the initial state. 
             # The _userIn node runs first and asks for input.
-            result = assistant.app.invoke(current_state)
+            result = assistant.app.invoke(
+                current_state,
+                config={"recursion_limit": 50}
+            )
             
             # The result is the final state of the execution flow
             current_state = result
             
             # Check for the exit condition set in userIn (if implemented in the calling loop)
             if current_state.get('complete'):
-                # # print history log of conversation
-                # messages: List[BaseMessage] = current_state.get('messages', [])
-            
-                # print("\n" + "="*50)
-                # print("CONVERSATION HISTORY LOG")
-                # print("="*50)
-                
-                # # Loop through the accumulated messages
-                # for msg in messages:
-                #     print(f"[{msg.type.upper(): <6}]: {msg.content.strip()}")
-                
-                # print("="*50 + "\n")
                 print("-"*50)
+                print("Thank you for using the Music Assistant!")
                 print("Assistant shutting down.")
                 break
                  
@@ -433,5 +511,10 @@ if __name__ == "__main__":
             print("\nAssistant shutting down via interrupt.")
             break
         except Exception as e:
-            print(f"An error occurred: {e}")
-            break
+            # Handle recursion limit gracefully
+            if "Recursion limit" in str(e) or "GraphRecursionError" in str(e):
+                print(f"\n Recursion limit reached. The conversation is getting too complex.")
+                print("Please start a new conversation by restarting the program.")
+                break
+            else:
+                print(f"An error occurred: {e}")

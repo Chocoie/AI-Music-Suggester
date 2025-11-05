@@ -5,3 +5,4 @@ python-dotenv
 spotipy
 google-cloud-secret-manager
 grpcio==1.67.1
+streamlit

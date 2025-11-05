@@ -41,36 +41,32 @@ This project is a LangGraph-based conversational assistant that uses the Gemini 
 
     **.env (Example)**
     ```
-    GOOGLE_API_KEY="AIzaSy...your-key-here"
-    SPOTIFY_CLIENT_ID="...your-spotify-id..."
-    SPOTIFY_CLIENT_SECRET="...your-spotify-secret..."
-    GRPC_VERBOSITY="ERROR"
-    GLOG_minloglevel="2"    
+    GOOGLE_API_KEY=<AIzaSy...your-key-here>
+    SPOTIFY_CLIENT_ID=<...your-spotify-id...>
+    SPOTIFY_CLIENT_SECRET=<...your-spotify-secret...>
+    GRPC_VERBOSITY='ERROR'
+    GLOG_minloglevel='2'    
     ```
 
 ## 4. Verify Setup
 Execute the verification script to confirm all dependencies and environment variables are loaded correctly:
-```bash
-# On macOS/Linux
+    ```bash
+    # On macOS/Linux
     python3 setup/verify_install.py
-    
-# On Windows
+
+    # On Windows
     python setup/verify_install.py
-```
+    ```
 You must see a "✨ SUCCESS!" message before proceeding. If you see any "❌" messages, follow the troubleshooting steps provided by the script.
 
 To check grpcio:
-```bash
-pip show grpcio
-```
+    ```bash
+    pip show grpcio
+    ```
 You should see "Version: 1.67.1"
 
 ## 5. How to Run
 
 Execute the main script:
-```bash
-# On macOS/Linux
-    python3 main.py
-    
-# On Windows
-    python main.py 
+    ```bash
+    streamlit run app.py 
