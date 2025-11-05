@@ -70,3 +70,4 @@ You should see "Version: 1.67.1"
 Execute the main script:
     ```bash
     streamlit run app.py 
+    ```
