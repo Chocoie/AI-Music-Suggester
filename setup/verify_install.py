@@ -18,12 +18,8 @@ REQUIRED_LIBRARIES = [
     'langchain_google_genai',
     'spotipy',
     'google.cloud.secretmanager',
-<<<<<<< HEAD
-    'dotenv'
-=======
     'dotenv',
     'streamlit'
->>>>>>> c0fb53a (Added a front-end)
 ]
 
 print("--- 🔬 Checking Required Libraries ---")
